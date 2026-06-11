@@ -1,3 +1,4 @@
+```plantuml
 @startuml 01_uc_diagram
 title Рисунок 4.1 – Диаграмма вариантов использования\nАРМ «Программирование и настройка ADCU»
 
@@ -54,3 +55,4 @@ UC01 ..> UC02 : <<include>>
 UC01 ..> UC03 : <<include>>
 UC01 ..> UC04 : <<include>>
 @enduml
+```
