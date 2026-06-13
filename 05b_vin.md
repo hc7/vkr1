@@ -28,7 +28,7 @@ database "MySQL\noperation_log" as DB
 
 CLI -> API : POST /api/vin/write\n{vin, project_id, can_interface: "can0"}
 API -> DM : DaemonRequest {action: "set_vin", vin, project_id}
-DM -> CAN : --set-vin <VIN> --can-interface can0
+DM -> CAN : set-vin <VIN> can-interface can0
 
 group Открытие диагностической сессии
   CAN -> ADCU : UDS $10 03  (Extended Diagnostic Session)
