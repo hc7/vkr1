@@ -19,7 +19,6 @@ skinparam fontName Arial
 skinparam defaultFontSize 11
 skinparam maxMessageSize 220
 
-title Рисунок 6.3а – Диаграмма последовательности: инициализация
 
 actor "Оператор" as OP
 participant "Браузер /\ndeploy_client.py" as CLI
