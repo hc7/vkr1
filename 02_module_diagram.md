@@ -25,7 +25,7 @@ skinparam cloud {
 package "pomo_dbus/  [запускается от root]" as dbus_pkg {
   component "nm_tiny_daemon.py\nD-Bus демон\n(диспетчер запросов)" as daemon
   component "doip_diag_full.py\nМашина состояний DoIP\n($34–$37, SecurityAccess)" as doip
-  component "docan_diag.py\nDoCAN-диагностика\n(--set-vin / --get-vin)" as docan
+  component "docan_diag.py\nDoCAN-диагностика\n(set-vin / get-vin)" as docan
   component "ssh_manager.py\nSSH/SCP-операции\n(identify/download/patch)" as ssh
   component "check_wifi_ap.py\nПроверка Wi-Fi AP\nпри загрузке" as wifi_check
   component "pomo_cli.py\nCLI устройства\n(remount rw/ro)" as pomo_cli
