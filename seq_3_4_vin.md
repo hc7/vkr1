@@ -1,7 +1,6 @@
 ```plantuml
 @startuml seq_3_4_vin
 
-
 <style>
 sequenceDiagram {
   MessageAlign center
@@ -158,5 +157,4 @@ end
 deactivate API
 
 @enduml
-
 ```
