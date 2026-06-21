@@ -1,5 +1,7 @@
 ```plantuml
 @startuml seq_3_4_vin
+
+
 <style>
 sequenceDiagram {
   MessageAlign center
@@ -27,93 +29,133 @@ sequenceDiagram {
 }
 </style>
 
-actor "Инженер" as ENG
+actor "Оператор" as OPR
 participant "Веб-браузер" as UI
 participant "main.py\n(FastAPI)" as API
 participant "nm_tiny_client.py\n(D-Bus клиент)" as CLIENT
 participant "nm_tiny_daemon.py\n(D-Bus демон)" as DAEMON
+participant "docan_diag.py" as DOCAN
 participant "db_manager.py" as DB
 database "MySQL 8.0" as MYSQL
+participant "ADCU\n(CAN-шина)" as ADCU
 
-== Запуск устройства ==
+== Инициация записи VIN ==
 
-DAEMON -> DAEMON : Регистрация на системной шине\nauto.atom.NmTinyDaemon
-activate DAEMON
-
-DAEMON -> DB : sync_pending_logs()
-activate DB
-DB -> MYSQL : Попытка подключения
-alt MySQL доступен
-    MYSQL --> DB : connection OK
-    DB -> MYSQL : INSERT из db_cache.jsonl\n(синхронизация кэша)
-    MYSQL --> DB : OK
-    DB --> DAEMON : кэш синхронизирован
-else MySQL недоступен
-    DB --> DAEMON : offline mode
-end
-deactivate DB
-
-API -> API : uvicorn запущен\n:8000
+OPR -> UI : нажать «Записать VIN»
+UI -> API : POST /api/vin/write\n{vin, project_id, can_interface: "can0"}
 activate API
-API -> CLIENT : инициализация D-Bus клиента
+
+API -> DB : log_stage(project_id, "vin_write", "running")
+activate DB
+DB -> MYSQL : INSERT INTO operation_log\n(stage='vin_write', status='running')
+MYSQL --> DB : OK
+DB --> API : OK
+deactivate DB
+
+API -> CLIENT : DaemonRequest\n{cmd: "set_vin", vin, can_interface}
 activate CLIENT
-CLIENT --> API : ready
+CLIENT -> DAEMON : D-Bus вызов\nauto.atom.NmTinyDaemon.SetVin()
+activate DAEMON
+DAEMON -> DOCAN : --set-vin <vin> --interface can0
+activate DOCAN
 
-== Подключение инженера ==
+== Процедура UDS по шине CAN ==
 
-ENG -> UI : открыть http://pomogator:8000
-UI -> API : GET /
-API --> UI : 200 OK (главная страница)
+DOCAN -> ADCU : Открытие CAN-сокета\n(SocketCAN, 500 кбит/с)
+activate ADCU
 
-ENG -> UI : перейти на /upload
-UI -> API : GET /api/files
-API -> DB : get_firmware_list()
-activate DB
-DB -> MYSQL : SELECT * FROM firmware
-MYSQL --> DB : список образов
-DB --> API : [{id, filename, version, target_ecu}]
-deactivate DB
-API --> UI : 200 OK (список файлов)
-UI --> ENG : отображён список доступных образов прошивок
+DOCAN -> ADCU : UDS $10 03\nDiagnosticSessionControl\n(Extended Session)
+ADCU --> DOCAN : UDS $50 03 (PositiveResponse)
 
-== Загрузка файла прошивки ==
+DOCAN -> ADCU : UDS $27 01\nSecurityAccess (requestSeed)
+ADCU --> DOCAN : UDS $67 01 + seed[4 байта]
 
-ENG -> UI : выбрать файл *.bin и нажать «Загрузить»
-UI -> API : POST /api/upload\n(multipart, ?md5=<hash>)
-activate API #lightblue
-API -> API : file_manager.py:\nпотоковый приём файла
-API -> API : верификация MD5
-alt MD5 совпадает
-    API -> DB : save_firmware_metadata(filename, version)
+DOCAN -> DOCAN : AES-ECB encrypt(seed)\nчерез libaesecb_x64.so
+DOCAN -> ADCU : UDS $27 02\nSecurityAccess (sendKey)
+
+alt Ключ верный
+    ADCU --> DOCAN : UDS $67 02 (PositiveResponse)
+
+    DOCAN -> ADCU : UDS $2E F1 90\nWriteDataByIdentifier\nDID 0xF190 + VIN[17]
+    ADCU --> DOCAN : UDS $6E F1 90 (PositiveResponse)
+
+    note right of DOCAN
+      Верификация записи
+    end note
+
+    DOCAN -> ADCU : UDS $22 F1 90\nReadDataByIdentifier\nDID 0xF190
+    ADCU --> DOCAN : UDS $62 F1 90 + VIN[17]
+
+    DOCAN -> DOCAN : сравнение считанного VIN\nс исходным (побайтово)
+
+    alt VIN совпадает
+        DOCAN --> DAEMON : {status: "success", vin_verified: true}
+        deactivate ADCU
+        deactivate DOCAN
+
+        DAEMON --> CLIENT : {result: "ok"}
+        deactivate DAEMON
+        CLIENT --> API : {status: "success"}
+        deactivate CLIENT
+
+        API -> DB : log_stage(project_id, "vin_write", "success")
+        activate DB
+        DB -> MYSQL : UPDATE operation_log\nstatus='success', finished_at=NOW()
+        MYSQL --> DB : OK
+        DB --> API : OK
+        deactivate DB
+
+        API -> DB : log_stage(project_id, "vin_verify", "success")
+        activate DB
+        DB -> MYSQL : INSERT operation_log\nstage='vin_verify', status='success'
+        MYSQL --> DB : OK
+        DB --> API : OK
+        deactivate DB
+
+        API --> UI : 200 OK\n{status: "success", vin_verified: true}
+        UI --> OPR : «VIN записан и верифицирован»
+
+    else VIN не совпадает
+        DOCAN --> DAEMON : {status: "failed", error: "vin_mismatch"}
+        deactivate DOCAN
+        DAEMON --> CLIENT : {result: "error"}
+        deactivate DAEMON
+        CLIENT --> API : {status: "failed"}
+        deactivate CLIENT
+
+        API -> DB : log_stage(project_id, "vin_verify", "failed")
+        activate DB
+        DB -> MYSQL : INSERT operation_log\nstage='vin_verify', status='failed'
+        MYSQL --> DB : OK
+        DB --> API : OK
+        deactivate DB
+
+        API --> UI : 422 Unprocessable Entity\n{error: "vin_mismatch"}
+        UI --> OPR : «Ошибка верификации VIN»
+    end
+
+else Ключ неверный (NRC 0x35)
+    ADCU --> DOCAN : NRC $7F 27 35\n(invalidKey)
+    deactivate ADCU
+    DOCAN --> DAEMON : {status: "failed", nrc: "0x35"}
+    deactivate DOCAN
+    DAEMON --> CLIENT : {result: "error", nrc: "0x35"}
+    deactivate DAEMON
+    CLIENT --> API : {status: "failed"}
+    deactivate CLIENT
+
+    API -> DB : log_stage(project_id, "vin_write", "failed",\nerror_code="NRC_0x35")
     activate DB
-    DB -> MYSQL : INSERT INTO firmware
-    MYSQL --> DB : id=N
-    DB --> API : firmware_id=N
+    DB -> MYSQL : UPDATE operation_log\nstatus='failed'
+    MYSQL --> DB : OK
+    DB --> API : OK
     deactivate DB
-    API --> UI : 200 OK {firmware_id: N}
-    UI --> ENG : «Файл загружен успешно»
-else MD5 не совпадает
-    API --> UI : 400 Bad Request\n{error: "checksum mismatch"}
-    UI --> ENG : «Ошибка контрольной суммы»
+
+    API --> UI : 502 Bad Gateway\n{error: "security_access_failed", nrc: "0x35"}
+    UI --> OPR : «Ошибка аутентификации SecurityAccess»
 end
-deactivate API #lightblue
 
-== Создание проекта ==
-
-ENG -> UI : ввести VIN и выбрать firmware_id,\nнажать «Создать проект»
-UI -> API : POST /api/projects\n{vin, firmware_id}
-API -> DB : create_project(vin, firmware_id)
-activate DB
-DB -> MYSQL : INSERT INTO projects\n(vin, firmware_id, status='ready')
-MYSQL --> DB : project_id=M
-DB --> API : project_id=M
-deactivate DB
-API --> UI : 201 Created {project_id: M}
-UI --> ENG : «Проект создан, ID=M\nГотов к прошивке»
-
-deactivate CLIENT
 deactivate API
-deactivate DAEMON
 
 @enduml
 
