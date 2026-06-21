@@ -53,7 +53,7 @@ else MySQL недоступен
 end
 deactivate DB
 
-API -> API : uvicorn запущен\n:8000
+API -> API : uvicorn запущен\n:5000
 activate API
 API -> CLIENT : инициализация D-Bus клиента
 activate CLIENT
@@ -61,7 +61,7 @@ CLIENT --> API : ready
 
 == Подключение инженера ==
 
-ENG -> UI : открыть http://pomogator:8000
+ENG -> UI : открыть http://pomogator:5000
 UI -> API : GET /
 API --> UI : 200 OK (главная страница)
 
