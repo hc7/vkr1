@@ -1,21 +1,31 @@
 ```plantuml
 @startuml seq_3_3_init
+<style>
+sequenceDiagram {
+  MessageAlign center
+  responseMessageBelowArrow true
+  ArrowThickness 1.5
+  RoundCorner 6
+  LifeLineBorderColor #aaaaaa
 
+  participant {
+    BackgroundColor #dae8fc
+    BorderColor #6c8ebf
+    FontStyle bold
+    Padding 20
+  }
 
-skinparam sequenceMessageAlign center
-skinparam responseMessageBelowArrow true
-skinparam ParticipantPadding 20
-skinparam BoxPadding 10
-skinparam sequenceArrowThickness 1.5
-skinparam roundcorner 6
-skinparam sequenceParticipantBorderColor #6c8ebf
-skinparam sequenceParticipantBackgroundColor #dae8fc
-skinparam sequenceParticipantFontStyle bold
-skinparam sequenceLifeLineBorderColor #aaaaaa
-skinparam sequenceGroupBorderColor #888888
-skinparam sequenceGroupBackgroundColor #f5f5f5
-skinparam noteBorderColor #d6b656
-skinparam noteBackgroundColor #fff2cc
+  group {
+    BorderColor #888888
+    BackgroundColor #f5f5f5
+  }
+
+  note {
+    BorderColor #d6b656
+    BackgroundColor #fff2cc
+  }
+}
+</style>
 
 actor "Инженер" as ENG
 participant "Веб-браузер" as UI
@@ -43,7 +53,7 @@ else MySQL недоступен
 end
 deactivate DB
 
-API -> API : uvicorn запущен\n:5000
+API -> API : uvicorn запущен\n:8000
 activate API
 API -> CLIENT : инициализация D-Bus клиента
 activate CLIENT
@@ -51,7 +61,7 @@ CLIENT --> API : ready
 
 == Подключение инженера ==
 
-ENG -> UI : открыть http://pomogator:5000
+ENG -> UI : открыть http://pomogator:8000
 UI -> API : GET /
 API --> UI : 200 OK (главная страница)
 
