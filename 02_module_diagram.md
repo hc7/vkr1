@@ -33,7 +33,7 @@ package "pomo_dbus/  [запускается от root]" as dbus_pkg {
 }
 
 package "nm-wifi-manager/app/  [запускается от pi]" as web_pkg {
-  component "main.py\nFastAPI маршруты\n(порт 8000)" as main
+  component "main.py\nFastAPI маршруты\n(порт 5000)" as main
   component "nm_tiny_client.py\nD-Bus клиент\n(DaemonRequest)" as nm_client
   component "deploy_manager.py\nПрокси состояния\nоперации" as deploy_mgr
   component "file_manager.py\nПотоковый приём\nфайлов прошивок" as file_mgr
@@ -71,6 +71,6 @@ docan --> can_bus : CAN 0/1\n500 кбит/с
 db_mgr --> mysql : TCP 3306
 
 ' External clients
-cli_pc --> main : HTTP REST\n:8000
+cli_pc --> main : HTTP REST\n:5000
 @enduml
 ```
